@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"path/filepath"
+	"math/rand"
 	"strconv"
 	"strings"
 	"sync"
@@ -202,6 +203,10 @@ func isBuiltInSelector(selector Selector) bool {
 func (m *Manager) syncSchedulerFromSnapshot(auths []*Auth) {
 	if m == nil || m.scheduler == nil {
 		return
+	}
+	cfg, _ := m.runtimeConfig.Load().(*internalconfig.Config)
+	if cfg != nil && cfg.MaxActiveAuths > 0 && len(auths) > cfg.MaxActiveAuths {
+		auths = auths[:cfg.MaxActiveAuths]
 	}
 	m.scheduler.rebuild(auths)
 }
@@ -879,6 +884,43 @@ func (m *Manager) Load(ctx context.Context) error {
 	return nil
 }
 
+// applyRequestDelay parses the request-delay config (format "min,max" in seconds)
+// and sleeps a random duration between min and max.
+func (m *Manager) applyRequestDelay(ctx context.Context) {
+	cfg, _ := m.runtimeConfig.Load().(*internalconfig.Config)
+	if cfg == nil {
+		return
+	}
+	delay := strings.TrimSpace(cfg.RequestDelay)
+	if delay == "" {
+		return
+	}
+	parts := strings.SplitN(delay, ",", 2)
+	if len(parts) != 2 {
+		return
+	}
+	minSec, err1 := strconv.ParseFloat(strings.TrimSpace(parts[0]), 64)
+	maxSec, err2 := strconv.ParseFloat(strings.TrimSpace(parts[1]), 64)
+	if err1 != nil || err2 != nil || minSec < 0 || maxSec < minSec {
+		return
+	}
+	minMs := int64(minSec * 1000)
+	maxMs := int64(maxSec * 1000)
+	jitterMs := minMs
+	if maxMs > minMs {
+		jitterMs = minMs + rand.Int63n(maxMs-minMs+1)
+	}
+	if jitterMs <= 0 {
+		return
+	}
+	t := time.NewTimer(time.Duration(jitterMs) * time.Millisecond)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+	case <-t.C:
+	}
+}
+
 // Execute performs a non-streaming execution using the configured selector and executor.
 // It supports multiple providers for the same model and round-robins the starting provider per model.
 func (m *Manager) Execute(ctx context.Context, providers []string, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (cliproxyexecutor.Response, error) {
@@ -886,6 +928,8 @@ func (m *Manager) Execute(ctx context.Context, providers []string, req cliproxye
 	if len(normalized) == 0 {
 		return cliproxyexecutor.Response{}, &Error{Code: "provider_not_found", Message: "no provider supplied"}
 	}
+
+	m.applyRequestDelay(ctx)
 
 	_, maxRetryCredentials, maxWait := m.retrySettings()
 
@@ -918,6 +962,8 @@ func (m *Manager) ExecuteCount(ctx context.Context, providers []string, req clip
 		return cliproxyexecutor.Response{}, &Error{Code: "provider_not_found", Message: "no provider supplied"}
 	}
 
+	m.applyRequestDelay(ctx)
+
 	_, maxRetryCredentials, maxWait := m.retrySettings()
 
 	var lastErr error
@@ -948,6 +994,8 @@ func (m *Manager) ExecuteStream(ctx context.Context, providers []string, req cli
 	if len(normalized) == 0 {
 		return nil, &Error{Code: "provider_not_found", Message: "no provider supplied"}
 	}
+
+	m.applyRequestDelay(ctx)
 
 	_, maxRetryCredentials, maxWait := m.retrySettings()
 

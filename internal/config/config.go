@@ -74,6 +74,10 @@ type Config struct {
 	MaxRetryCredentials int `yaml:"max-retry-credentials" json:"max-retry-credentials"`
 	// MaxRetryInterval defines the maximum wait time in seconds before retrying a cooled-down credential.
 	MaxRetryInterval int `yaml:"max-retry-interval" json:"max-retry-interval"`
+	// MaxActiveAuths limits how many auth entries are active at once (0 = no limit).
+	MaxActiveAuths int `yaml:"max-active-auths" json:"max-active-auths"`
+	// RequestDelay adds a random delay (ms) before each request. Format: "min,max" e.g. "1000,5000".
+	RequestDelay string `yaml:"request-delay" json:"request-delay"`
 
 	// QuotaExceeded defines the behavior when a quota is exceeded.
 	QuotaExceeded QuotaExceeded `yaml:"quota-exceeded" json:"quota-exceeded"`
