@@ -89,6 +89,42 @@ type Auth struct {
 	// ModelStates tracks per-model runtime availability data.
 	ModelStates map[string]*ModelState `json:"model_states,omitempty"`
 
+	// --- Health scoring (ported from codex2api) ---
+	// HealthTier: healthy / warm / risky / banned
+	HealthTier string `json:"health_tier,omitempty"`
+	// SchedulerScore is the real-time scheduling score (baseline 100).
+	SchedulerScore float64 `json:"scheduler_score,omitempty"`
+	// DynamicConcurrencyLimit is the max concurrent requests allowed for this auth.
+	DynamicConcurrencyLimit int64 `json:"dynamic_concurrency_limit,omitempty"`
+	// SuccessStreak counts consecutive successes.
+	SuccessStreak int `json:"success_streak,omitempty"`
+	// FailureStreak counts consecutive failures.
+	FailureStreak int `json:"failure_streak,omitempty"`
+	// LastSuccessAt records the last successful execution time.
+	LastSuccessAt time.Time `json:"last_success_at,omitempty"`
+	// LastFailureAt records the last failed execution time.
+	LastFailureAt time.Time `json:"last_failure_at,omitempty"`
+	// LastUnauthorizedAt records the last 401 error time.
+	LastUnauthorizedAt time.Time `json:"last_unauthorized_at,omitempty"`
+	// LastRateLimitedAt records the last 429 error time.
+	LastRateLimitedAt time.Time `json:"last_rate_limited_at,omitempty"`
+	// LastTimeoutAt records the last timeout error time.
+	LastTimeoutAt time.Time `json:"last_timeout_at,omitempty"`
+	// LastServerErrorAt records the last 5xx error time.
+	LastServerErrorAt time.Time `json:"last_server_error_at,omitempty"`
+	// LatencyEWMA tracks exponential weighted moving average of request latency.
+	LatencyEWMA float64 `json:"latency_ewma,omitempty"`
+	// RecentResults is a sliding window of recent request outcomes (1=success, 0=failure).
+	RecentResults [20]uint8 `json:"recent_results,omitempty"`
+	// RecentResultsIdx is the write position in the circular buffer.
+	RecentResultsIdx int `json:"recent_results_idx,omitempty"`
+	// RecentResultsCnt is the number of results recorded (max 20).
+	RecentResultsCnt int `json:"recent_results_cnt,omitempty"`
+	// ActiveRequests tracks current concurrent requests (atomic, in-memory only).
+	ActiveRequests int64 `json:"-"`
+	// TotalRequests tracks cumulative request count (atomic, in-memory only).
+	TotalRequests int64 `json:"-"`
+
 	// Runtime carries non-serialisable data used during execution (in-memory only).
 	Runtime any `json:"-"`
 
@@ -149,6 +185,7 @@ func (a *Auth) Clone() *Auth {
 			copyAuth.ModelStates[key] = state.Clone()
 		}
 	}
+	copyAuth.RecentResults = a.RecentResults
 	copyAuth.Runtime = a.Runtime
 	return &copyAuth
 }

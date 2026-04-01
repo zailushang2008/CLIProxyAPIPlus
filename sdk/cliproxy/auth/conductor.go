@@ -98,6 +98,8 @@ type Result struct {
 	RetryAfter *time.Duration
 	// Error describes the failure when Success is false.
 	Error *Error
+	// LatencyMs records the request latency in milliseconds for health scoring.
+	LatencyMs float64
 }
 
 // Selector chooses an auth candidate for execution.
@@ -1077,8 +1079,10 @@ func (m *Manager) executeMixedOnce(ctx context.Context, providers []string, req 
 		for _, upstreamModel := range models {
 			execReq := req
 			execReq.Model = upstreamModel
+			startTime := time.Now()
 			resp, errExec := executor.Execute(execCtx, auth, execReq, opts)
-			result := Result{AuthID: auth.ID, Provider: provider, Model: routeModel, Success: errExec == nil}
+			latencyMs := float64(time.Since(startTime).Milliseconds())
+			result := Result{AuthID: auth.ID, Provider: provider, Model: routeModel, Success: errExec == nil, LatencyMs: latencyMs}
 			if errExec != nil {
 				if errCtx := execCtx.Err(); errCtx != nil {
 					return cliproxyexecutor.Response{}, errCtx
@@ -1662,6 +1666,20 @@ func (m *Manager) MarkResult(ctx context.Context, result Result) {
 	m.mu.Lock()
 	if auth, ok := m.auths[result.AuthID]; ok && auth != nil {
 		now := time.Now()
+
+		// Health scoring: record the result for scheduling decisions
+		statusCode := statusCodeFromResult(result.Error)
+		if result.Success {
+			auth.RecordSuccess(result.LatencyMs)
+		} else {
+			auth.RecordFailure(statusCode, result.LatencyMs)
+		}
+		cfg, _ := m.runtimeConfig.Load().(*internalconfig.Config)
+		baseConcurrency := int64(1)
+		if cfg != nil && cfg.MaxActiveAuths > 0 {
+			baseConcurrency = int64(cfg.MaxActiveAuths)
+		}
+		auth.RecomputeScheduler(baseConcurrency)
 
 		if result.Success {
 			if result.Model != "" {
