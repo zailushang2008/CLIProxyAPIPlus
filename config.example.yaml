@@ -88,6 +88,14 @@ max-retry-credentials: 0
 # Maximum wait time in seconds for a cooled-down credential before triggering a retry.
 max-retry-interval: 30
 
+# Maximum number of active auth entries loaded into the scheduler (0 = no limit).
+# Useful when you have many auth files but only want to use a subset at a time.
+max-active-auths: 0
+
+# Random delay before each request (format: "min,max" in seconds, e.g. "1,5").
+# Helps spread requests across time to reduce burst load.
+request-delay: ""
+
 # Quota exceeded behavior
 quota-exceeded:
   switch-project: true # Whether to automatically switch to another project when a quota is exceeded
