@@ -78,6 +78,8 @@ type Config struct {
 	MaxActiveAuths int `yaml:"max-active-auths" json:"max-active-auths"`
 	// RequestDelay adds a random delay (ms) before each request. Format: "min,max" e.g. "1000,5000".
 	RequestDelay string `yaml:"request-delay" json:"request-delay"`
+	// RequestTimeoutSec sets the per-request timeout in seconds for upstream calls (0 = use default 30s).
+	RequestTimeoutSec int `yaml:"request-timeout" json:"request-timeout"`
 
 	// QuotaExceeded defines the behavior when a quota is exceeded.
 	QuotaExceeded QuotaExceeded `yaml:"quota-exceeded" json:"quota-exceeded"`

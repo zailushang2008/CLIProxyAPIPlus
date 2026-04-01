@@ -934,12 +934,17 @@ func (m *Manager) Execute(ctx context.Context, providers []string, req cliproxye
 	_, maxRetryCredentials, maxWait := m.retrySettings()
 
 	var lastErr error
+	allUnavailable := false
 	for attempt := 0; ; attempt++ {
 		resp, errExec := m.executeMixedOnce(ctx, normalized, req, opts, maxRetryCredentials)
 		if errExec == nil {
 			return resp, nil
 		}
 		lastErr = errExec
+		// Detect "all auths unavailable" fast-path
+		if isAuthNotFoundError(errExec) {
+			allUnavailable = true
+		}
 		wait, shouldRetry := m.shouldRetryAfterError(errExec, attempt, normalized, req.Model, maxWait)
 		if !shouldRetry {
 			break
@@ -949,6 +954,9 @@ func (m *Manager) Execute(ctx context.Context, providers []string, req cliproxye
 		}
 	}
 	if lastErr != nil {
+		if allUnavailable {
+			return cliproxyexecutor.Response{}, &Error{Code: "auth_not_found", Message: "all active auths are unavailable (cooldown or invalid tokens). Check auth status via management API."}
+		}
 		return cliproxyexecutor.Response{}, lastErr
 	}
 	return cliproxyexecutor.Response{}, &Error{Code: "auth_not_found", Message: "no auth available"}
@@ -1024,6 +1032,16 @@ func (m *Manager) executeMixedOnce(ctx context.Context, providers []string, req 
 	if len(providers) == 0 {
 		return cliproxyexecutor.Response{}, &Error{Code: "provider_not_found", Message: "no provider supplied"}
 	}
+
+	// Apply per-request timeout from config
+	cfg, _ := m.runtimeConfig.Load().(*internalconfig.Config)
+	timeoutSec := 30
+	if cfg != nil && cfg.RequestTimeoutSec > 0 {
+		timeoutSec = cfg.RequestTimeoutSec
+	}
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSec)*time.Second)
+	defer cancel()
+
 	routeModel := req.Model
 	opts = ensureRequestedModelMetadata(opts, routeModel)
 	tried := make(map[string]struct{})
@@ -1935,6 +1953,14 @@ func statusCodeFromResult(err *Error) int {
 // error that should not be retried. Specifically, it treats 400 responses with
 // "invalid_request_error" and all 422 responses as request-shape failures,
 // where switching auths or pooled upstream models will not help.
+func isAuthNotFoundError(err error) bool {
+	var clipErr *Error
+	if errors.As(err, &clipErr) {
+		return clipErr.Code == "auth_not_found"
+	}
+	return false
+}
+
 func isRequestInvalidError(err error) bool {
 	if err == nil {
 		return false

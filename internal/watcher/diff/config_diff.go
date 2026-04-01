@@ -66,6 +66,9 @@ func BuildConfigChangeDetails(oldCfg, newCfg *config.Config) []string {
 	if oldCfg.RequestDelay != newCfg.RequestDelay {
 		changes = append(changes, fmt.Sprintf("request-delay: %s -> %s", oldCfg.RequestDelay, newCfg.RequestDelay))
 	}
+	if oldCfg.RequestTimeoutSec != newCfg.RequestTimeoutSec {
+		changes = append(changes, fmt.Sprintf("request-timeout: %d -> %d", oldCfg.RequestTimeoutSec, newCfg.RequestTimeoutSec))
+	}
 	if oldCfg.ProxyURL != newCfg.ProxyURL {
 		changes = append(changes, fmt.Sprintf("proxy-url: %s -> %s", formatProxyURL(oldCfg.ProxyURL), formatProxyURL(newCfg.ProxyURL)))
 	}
